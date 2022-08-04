@@ -33,7 +33,7 @@ services:
       MYSQL_PASSWORD: secret
       MYSQL_ROOT_PASSWORD: secret
       SERVICE_TAGS: dev
-      SERVİCE_NAME: mysql
+      SERVICE_NAME: mysql
     networks:
       - laravel
 
