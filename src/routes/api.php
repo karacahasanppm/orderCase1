@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\OrderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,4 +25,17 @@ Route::group([
     Route::post('login', [AuthController::class,'login']);
     Route::post('register', [AuthController::class,'register']);
 
+    Route::group([
+        'prefix' => 'order'
+    ],function () {
+
+        Route::post('add',[OrderController::class,'addOrder'])->middleware('auth:api');
+
+    });
+
 });
+
+Route::get('/test', function(){
+    return 'hello';
+})->middleware('auth:api');
+

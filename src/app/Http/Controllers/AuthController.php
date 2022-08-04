@@ -85,7 +85,7 @@ class AuthController extends Controller
                 $user = Auth::user();
                 $message['token'] = $user->createToken('orderCase1')->accessToken;
                 $message['token_type'] = 'Bearer';
-                $message['expires_at'] = Carbon::parse(Carbon::now()->addSeconds(30))->toDateTimeString();
+                $message['expires_at'] = Carbon::parse(Carbon::now()->addDays(1))->toDateTimeString();
                 $message['success'] = 'User Login Successful';
 
                 return response()->json(
