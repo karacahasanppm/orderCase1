@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('discount_name');
             $table->string('discount_key_name')->default("");
             $table->string('discount_key_value')->default(0);
+            $table->timestamps();
         });
     }
 

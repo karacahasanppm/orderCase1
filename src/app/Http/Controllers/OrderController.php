@@ -3,12 +3,81 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\DBController;
+use App\Models\Customer;
+use App\Models\Discount;
+use App\Models\DiscountDetail;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use function PHPUnit\Framework\countOf;
 
 class OrderController extends Controller
 {
+
+    public function deleteOrder(Request $request)
+    {
+        $errors = [];
+        $successes = [];
+
+        $fixedNames = [
+            'orders' => 'orders',
+            'orders.*' => 'order_id'
+        ];
+
+        $validateRequest = Validator::make($request->all(),[
+            'orders' => 'required|array',
+            'orders.*' => 'required|integer|exists:orders,order_id'
+        ],[
+
+            'orders.*.exists' => array('field' => ':attribute','message' => 'This order not found in databases.'),
+
+        ],$fixedNames);
+
+        if(count($validateRequest->errors()) > 0){
+            return response()->json([
+                'result' => array(
+                    'errors' => $validateRequest->errors(),
+                    'successes' => []
+                )
+            ],400);
+        }
+
+        $request->input('orders');
+
+        foreach ($request->input('orders') as $orderId) {
+
+            $orderRevenue = Order::where('order_id',$orderId)->first()->discounted_price;
+            $customerId = Order::where('order_id',$orderId)->first()->customer_id;
+            $orderItems = OrderItem::where('order_id',$orderId)->get();
+            $customerNewRevenue = Customer::where('id',$customerId)->first()->revenue - $orderRevenue;
+            Customer::where('id',$customerId)->update(['revenue' => $customerNewRevenue]);
+            foreach ($orderItems as $orderItem) {
+
+                $productNewStock = Product::where('id',$orderItem->product_id)->first()->stock + $orderItem->quantity;
+                Product::where('id',$orderItem->product_id)->update(['stock' => $productNewStock]);
+                OrderItem::where('product_id',$orderItem->product_id)->delete();
+
+            }
+            Order::where('order_id',$orderId)->delete();
+            DiscountDetail::where('order_id',$orderId)->delete();
+
+            $successes[] = array(
+                'order_id' => $orderId,
+                'message' => "Order deleted successfully."
+            );
+        }
+
+        return response()->json([
+            'result' => array(
+                'errors' => [],
+                'successes' => $successes
+            )
+        ],200);
+
+
+    }
 
     public function addOrder(Request $request)
     {
@@ -22,23 +91,22 @@ class OrderController extends Controller
             'orders.*.customer_id' => 'customer_id',
             'orders.*.items' => 'items',
             'orders.*.items.*.product_id' => 'product_id',
-            'orders.*.items.*.quantity' => 'quantity',
-            'orders.*.items.*.unit_price' => 'unit_price'
+            'orders.*.items.*.quantity' => 'quantity'
         ];
 
         $validateRequest = Validator::make($request->all(),[
             'orders' => 'required|array',
-            'orders.*.id' => 'required|integer',
+            'orders.*.id' => 'required|integer|unique:orders,order_id|distinct',
             'orders.*.customer_id' => 'required|integer|exists:customers,id',
             'orders.*.items' => 'required|array|min:0',
             'orders.*.items.*.product_id' => 'required|integer|exists:products,id',
-            'orders.*.items.*.quantity' => 'required|integer',
-            'orders.*.items.*.unit_price' => 'required|regex:/^[0-9]+(\.[0-9][0-9]?)?$/|'
+            'orders.*.items.*.quantity' => 'required|integer'
         ],[
 
-            'orders.required' => "aaa",
             'orders.*.items.*.product_id.exists' => array('field' => ':attribute','message' => 'This product not found in databases.'),
-            'orders.*.customer_id.exists' => array('field' => ':attribute','message' => 'This customer not found in databases.')
+            'orders.*.customer_id.exists' => array('field' => ':attribute','message' => 'This customer not found in databases.'),
+            'orders.*.id.unique' => array('field' => ':attribute','message' => 'This order already saved, please delete before saving.'),
+            'orders.*.id.distinct' => array('field' => ':attribute','message' => 'You are send same order_id values in one request, please check.'),
 
         ],$fixedNames);
 
@@ -91,9 +159,10 @@ class OrderController extends Controller
 
                     $orderProductId = $item['product_id'];
                     $orderProductQty = $item['quantity'];
-                    $orderProductUnitPrice = $item['unit_price'];
-                    $productStock = DBController::getProductInfo($item['product_id'])->stock;
-                    $productCategory = DBController::getProductInfo($item['product_id'])->category;
+                    $orderProductUnitPrice = Product::where('id',$item['product_id'])->first()->price;
+                    $productStock = Product::where('id',$item['product_id'])->first()->stock;
+                    $productCategory = Product::where('id',$item['product_id'])->first()->category;
+
                     $totalQtyThisProduct = $totalProductQtys[$item['product_id']];
                     if($productStock < $totalQtyThisProduct){
 
@@ -113,6 +182,7 @@ class OrderController extends Controller
                         $calculatedTotalPrice += $calculatedItemPrice;
                         $order['items'][$itemKey]['total_unit_price'] = $calculatedItemPrice;
                         $order['items'][$itemKey]['product_category'] = $productCategory;
+                        $order['items'][$itemKey]['unit_price'] = $orderProductUnitPrice;
 
                     }
 
@@ -124,36 +194,39 @@ class OrderController extends Controller
 
                     $totalDiscountPrice = $this->calculateOrderDiscounts($orderId,$order['items']);
 
-                    $saveOrderArr = array(
-                        'id' => $orderId,
+                    $saveOrderArr = new Order([
+                        'order_id' => $orderId,
                         'customer_id' => $orderCustomerId,
                         'total_price' => $calculatedTotalPrice,
                         'discounted_price' => $totalDiscountPrice
+                    ]);
+
+                    $saveOrderArr->save();
+                    $userCurrentRevenue = Customer::where('id',$orderCustomerId)->first()->revenue;
+                    $userNewRevenue = $userCurrentRevenue + $totalDiscountPrice;
+                    Customer::where('id',$orderCustomerId)->update(['revenue' => $userNewRevenue]);
+
+                    $successes[] = array(
+                        'order_id' => $orderId,
+                        'message' => "Order saved successfully."
                     );
-
-                    $orderSaveRes = DBController::saveOrder($saveOrderArr);
-
-                    if($orderSaveRes){
-                        $successes[] = array(
-                            'order_id' => $orderId,
-                            'message' => "Order saved successfully."
-                        );
-                    }else{
-                        $errors[] = array(
-                            'error_description' => array(
-                                'order_id' => $orderId,
-                                'message' => "An Error Occured."
-                            ),
-                            'error_index' => (int)$key
-                        );
-                    }
 
                     foreach ($order['items'] as $item) {
 
-                        DBController::saveOrderLineItems($orderId,$item);
+                        $orderItemsSaveArr = new OrderItem([
+                            'product_id' => $item['product_id'],
+                            'quantity' => $item['quantity'],
+                            'unit_price' => $item['unit_price'],
+                            'total_price' => $item['total_unit_price'],
+                            'order_id' => $orderId,
+                        ]);
+                        $orderItemsSaveArr->save();
+
+                        $productStock = Product::where('id',$item['product_id'])->first()->stock;
+                        $remainingStock = $productStock - $item['quantity'];
+                        Product::where('id',$item['product_id'])->update(['stock' => $remainingStock]);
 
                     }
-
 
                 }
 
@@ -173,7 +246,8 @@ class OrderController extends Controller
     {
         $allDiscounts = [];
         $totalDiscountPrice = 0;
-        $discountIds = DBController::getDiscountIds();
+        $discountIds = Discount::select('discount_id')->distinct()->get();
+
         foreach ($discountIds as $discountId) {
             $discountResult = DiscountController::discount($discountId->discount_id,$items);
             if ($discountResult != 0){
@@ -188,7 +262,6 @@ class OrderController extends Controller
         }
 
         return $totalDiscountPrice;
-
 
     }
 

@@ -20,6 +20,7 @@ return new class extends Migration
             $table->integer('quantity');
             $table->double('unit_price');
             $table->double('total_price');
+            $table->timestamps();
         });
     }
 

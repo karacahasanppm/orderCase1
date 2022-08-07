@@ -30,12 +30,9 @@ Route::group([
     ],function () {
 
         Route::post('add',[OrderController::class,'addOrder'])->middleware('auth:api');
+        Route::delete('delete',[OrderController::class,'deleteOrder'])->middleware('auth:api');
 
     });
 
 });
-
-Route::get('/test', function(){
-    return 'hello';
-})->middleware('auth:api');
 

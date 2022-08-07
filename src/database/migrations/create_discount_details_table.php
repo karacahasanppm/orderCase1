@@ -20,6 +20,7 @@ return new class extends Migration
             $table->string('discount_name');
             $table->string('discount_total');
             $table->string('sub_total');
+            $table->timestamps();
         });
     }
 

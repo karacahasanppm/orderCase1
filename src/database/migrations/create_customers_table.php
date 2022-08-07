@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('since');
             $table->float('revenue')->default(0);
+            $table->timestamps();
         });
     }
 

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Discount;
+use App\Models\DiscountDetail;
 use Illuminate\Http\Request;
 
 class DiscountController extends Controller
@@ -16,10 +18,10 @@ class DiscountController extends Controller
                     'total_price_discount_percent'
                 );
                 foreach ($discountKeys as $discountKey) {
-                    $discountValues = DBController::getDiscountDetails($id,$discountKey);
-                    $discountKeyValues[$discountKey] = $discountValues->discount_key_value;
+                    $discountValues = Discount::where('discount_id',$id)->where('discount_key_name',$discountKey)->first()->discount_key_value;
+                    $discountKeyValues[$discountKey] = $discountValues;
                 }
-                $discountName = $discountValues->discount_name;
+                $discountName = Discount::where('discount_id',$id)->first()->discount_name;
 
                 foreach ($items as $item) {
 
@@ -52,10 +54,10 @@ class DiscountController extends Controller
                     'free_product_count'
                 );
                 foreach ($discountKeys as $discountKey) {
-                    $discountValues = DBController::getDiscountDetails($id,$discountKey);
-                    $discountKeyValues[$discountKey] = $discountValues->discount_key_value;
+                    $discountValues = Discount::where('discount_id',$id)->where('discount_key_name',$discountKey)->first()->discount_key_value;
+                    $discountKeyValues[$discountKey] = $discountValues;
                 }
-                $discountName = $discountValues->discount_name;
+                $discountName = Discount::where('discount_id',$id)->first()->discount_name;
                 foreach ($items as $item) {
 
                     $itemTotalPrice = $item['quantity'] * $item['unit_price'];
@@ -105,10 +107,10 @@ class DiscountController extends Controller
                     'total_price_discount_percent'
                 );
                 foreach ($discountKeys as $discountKey) {
-                    $discountValues = DBController::getDiscountDetails($id,$discountKey);
-                    $discountKeyValues[$discountKey] = $discountValues->discount_key_value;
+                    $discountValues = Discount::where('discount_id',$id)->where('discount_key_name',$discountKey)->first()->discount_key_value;
+                    $discountKeyValues[$discountKey] = $discountValues;
                 }
-                $discountName = $discountValues->discount_name;
+                $discountName = Discount::where('discount_id',$id)->first()->discount_name;
                 foreach ($items as $item) {
 
                     $itemTotalPrice = $item['quantity'] * $item['unit_price'];
