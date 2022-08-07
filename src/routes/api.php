@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\DiscountController;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,6 +32,16 @@ Route::group([
 
         Route::post('add',[OrderController::class,'addOrder'])->middleware('auth:api');
         Route::delete('delete',[OrderController::class,'deleteOrder'])->middleware('auth:api');
+        Route::get('list',[OrderController::class,'getOrders'])->middleware('auth:api');
+        Route::get('',[OrderController::class,'getOrderById'])->middleware('auth:api');
+
+    });
+    Route::group([
+        'prefix' => 'campaign'
+    ],function () {
+
+        Route::get('',[DiscountController::class,'getDiscountByOrderId'])->middleware('auth:api');
+        Route::get('list',[DiscountController::class,'getAllDiscounts'])->middleware('auth:api');
 
     });
 

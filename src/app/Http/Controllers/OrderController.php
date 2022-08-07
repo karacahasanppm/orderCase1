@@ -16,9 +16,120 @@ use function PHPUnit\Framework\countOf;
 class OrderController extends Controller
 {
 
+    public function getOrderById(Request $request,$inner = false)
+    {
+        $validateRequest = Validator::make($request->all(),[
+            'id' => 'required|integer|exists:orders,order_id'
+        ],[
+
+            'id.exists' => array('field' => ':attribute','message' => 'This order not found in databases.'),
+
+        ]);
+
+        if(count($validateRequest->errors()) > 0){
+            return response()->json([
+                'result' => array(
+                    'errors' => $validateRequest->errors()
+                )
+            ],400);
+        }
+        $orderId = $request->input('id');
+
+        $orders = Order::where('order_id', $orderId)->get();
+
+        foreach ($orders as $order) {
+            $products = [];
+            $discounts = [];
+            $orderId = $order->order_id;
+            $customerId = $order->customer_id;
+            $orderItems = OrderItem::where('order_id',$orderId)->orderBy('total_price')->get();
+            $totalPriceBeforeDiscounts = 0;
+            foreach ($orderItems as $orderItem) {
+
+                $productId = $orderItem->product_id;
+                $productQty = $orderItem->quantity;
+                $productUnitPrice = $orderItem->unit_price;
+                $productTotalPrice = $orderItem->total_price;
+                $productName = Product::where('id',$productId)->first()->name;
+                $totalPriceBeforeDiscounts += $productTotalPrice;
+
+                $products[] = array(
+                    'productId' => $productId,
+                    'productName' => $productName,
+                    'unitPrice' => $productUnitPrice,
+                    'quantity' => $productQty,
+                    'total' => $productTotalPrice
+                );
+
+            }
+
+            $orderDiscounts = DiscountDetail::where('order_id',$orderId)->orderByDesc('sub_total')->get();
+            $totalDiscountPrice = 0;
+            foreach ($orderDiscounts as $orderDiscount) {
+
+                $discountName = $orderDiscount->discount_name;
+                $discountTotal = $orderDiscount->discount_total;
+                $discountSubTotal = $orderDiscount->sub_total;
+
+                $discounts[] = array(
+                    'discountReason' => $discountName,
+                    'discountAmount' => $discountTotal,
+                    'subtotal' => $discountSubTotal
+                );
+
+                $totalDiscountPrice += $discountTotal;
+
+            }
+
+            $finalPrice = $totalPriceBeforeDiscounts - $totalDiscountPrice;
+
+            $result[] = array(
+                'id' => $orderId,
+                'customer_id' => $customerId,
+                'items' => $products,
+                'discounts' => $discounts,
+                'totalPriceBeforeDiscounts' => $totalPriceBeforeDiscounts,
+                'totapPriceWithDiscounts' => $finalPrice
+            );
+
+        }
+
+        if($inner){
+            return $result;
+        }
+
+        return response()->json([
+            'result' => $result
+        ],200);
+    }
+
+    public function getOrders(Request $request)
+    {
+        $orders = Order::where('id','>', 0)->get();
+        if(count($orders) > 0){
+
+            foreach ($orders as $order) {
+
+                $orderRequest = new \Illuminate\Http\Request();
+                $orderRequest->merge(['id' => $order->order_id]);
+                $orderDetails = $this->getOrderById($orderRequest,true);
+
+                $result['orders'][] = $orderDetails;
+
+            }
+
+            return response()->json([
+                'result' => $result
+            ],200);
+
+        }else{
+            return response()->json([],204);
+        }
+
+    }
+
     public function deleteOrder(Request $request)
     {
-        $errors = [];
         $successes = [];
 
         $fixedNames = [
@@ -99,7 +210,7 @@ class OrderController extends Controller
             'orders.*.id' => 'required|integer|unique:orders,order_id|distinct',
             'orders.*.customer_id' => 'required|integer|exists:customers,id',
             'orders.*.items' => 'required|array|min:0',
-            'orders.*.items.*.product_id' => 'required|integer|exists:products,id',
+            'orders.*.items.*.product_id' => 'required|integer|exists:products,id|distinct',
             'orders.*.items.*.quantity' => 'required|integer'
         ],[
 
@@ -192,7 +303,7 @@ class OrderController extends Controller
 
                     DBController::clearOldData($orderId);
 
-                    $totalDiscountPrice = $this->calculateOrderDiscounts($orderId,$order['items']);
+                    $totalDiscountPrice = $this->calculateOrderDiscounts($orderId,$order['items'],$calculatedTotalPrice);
 
                     $saveOrderArr = new Order([
                         'order_id' => $orderId,
@@ -242,18 +353,18 @@ class OrderController extends Controller
 
     }
 
-    public function calculateOrderDiscounts($orderId,$items)
+    public function calculateOrderDiscounts($orderId,$items,$calculatedTotalPrice)
     {
         $allDiscounts = [];
         $totalDiscountPrice = 0;
         $discountIds = Discount::select('discount_id')->distinct()->get();
 
         foreach ($discountIds as $discountId) {
-            $discountResult = DiscountController::discount($discountId->discount_id,$items);
+            $discountResult = DiscountController::discount($discountId->discount_id,$items,$calculatedTotalPrice);
             if ($discountResult != 0){
                 $allDiscounts[] = $discountResult;
                 $totalDiscountPrice += $discountResult['discount_price'];
-
+                $calculatedTotalPrice = $discountResult['after_discount_price'];
             }
         }
 

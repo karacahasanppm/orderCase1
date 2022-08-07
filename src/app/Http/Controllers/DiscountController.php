@@ -4,15 +4,102 @@ namespace App\Http\Controllers;
 
 use App\Models\Discount;
 use App\Models\DiscountDetail;
+use App\Models\Order;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 class DiscountController extends Controller
 {
-    public static function discount($id,$items){
+
+    public function getAllDiscounts()
+    {
+        $discounts = DiscountDetail::select('order_id')->distinct()->get();
+        if(count($discounts) > 0){
+
+            foreach ($discounts as $discount) {
+
+                $discountRequest = new \Illuminate\Http\Request();
+                $discountRequest->merge(['id' => $discount->order_id]);
+                $discountDetails = $this->getDiscountByOrderId($discountRequest,true);
+
+                $result['discounts'][] = $discountDetails;
+
+            }
+
+            return response()->json([
+                'result' => $result
+            ],200);
+
+        }else{
+            return response()->json([],204);
+        }
+    }
+
+    public function getDiscountByOrderId(Request $request,$inner = false)
+    {
+
+        $validateRequest = Validator::make($request->all(),[
+            'id' => 'required|integer|exists:orders,order_id'
+        ],[
+
+            'id.exists' => array('field' => ':attribute','message' => 'This order not found in databases.'),
+
+        ]);
+
+        if(count($validateRequest->errors()) > 0){
+            return response()->json([
+                'result' => array(
+                    'errors' => $validateRequest->errors()
+                )
+            ],400);
+        }
+
+        $orderId = $request->input('id');
+        $totalPrice = Order::where('order_id', $orderId)->first()->total_price;
+        $totalDiscountPrice = Order::where('order_id', $orderId)->first()->discounted_price;
+        $orderDiscounts = DiscountDetail::where('order_id',$orderId)->orderByDesc('sub_total')->get();
+        foreach ($orderDiscounts as $orderDiscount) {
+
+            $discountName = $orderDiscount->discount_name;
+            $discountTotal = $orderDiscount->discount_total;
+            $discountSubTotal = $orderDiscount->sub_total;
+
+            $discounts[] = array(
+                'discountReason' => $discountName,
+                'discountAmount' => $discountTotal,
+                'subtotal' => $discountSubTotal
+            );
+
+        }
+
+        if($inner){
+            return array(
+                'order_id' => $orderId,
+                'discounts' => $discounts,
+                'totalDiscount' => $totalDiscountPrice,
+                'discountedTotal' => $totalPrice - $totalDiscountPrice
+            );
+        }
+
+        if(count($discounts) > 0){
+            return response()->json([
+                'result' => array(
+                    'order_id' => $orderId,
+                    'discounts' => $discounts,
+                    'totalDiscount' => $totalDiscountPrice,
+                    'discountedTotal' => $totalPrice - $totalDiscountPrice
+                )
+            ],200);
+        }
+
+
+    }
+
+    public static function discount($id,$items,$calculatedTotalPrice){
 
         switch ($id) {
             case 1:
-                $orderTotalPrice = 0;
+                $orderTotalPrice = $calculatedTotalPrice;
                 $discountKeys = array(
                     'minimum_total_price',
                     'total_price_discount_percent'
@@ -22,14 +109,6 @@ class DiscountController extends Controller
                     $discountKeyValues[$discountKey] = $discountValues;
                 }
                 $discountName = Discount::where('discount_id',$id)->first()->discount_name;
-
-                foreach ($items as $item) {
-
-                    $itemTotalPrice = $item['quantity'] * $item['unit_price'];
-
-                    $orderTotalPrice += $itemTotalPrice;
-
-                }
 
                 if($orderTotalPrice > $discountKeyValues['minimum_total_price']){
                     return array(
@@ -44,7 +123,7 @@ class DiscountController extends Controller
                 }
             case 2:
 
-                $orderTotalPrice = 0;
+                $orderTotalPrice = $calculatedTotalPrice;
                 $haveDiscount = 0;
                 $orderTotalDiscountPrice = 0;
                 $exceptedCategoryItems = [];
@@ -59,10 +138,6 @@ class DiscountController extends Controller
                 }
                 $discountName = Discount::where('discount_id',$id)->first()->discount_name;
                 foreach ($items as $item) {
-
-                    $itemTotalPrice = $item['quantity'] * $item['unit_price'];
-
-                    $orderTotalPrice += $itemTotalPrice;
 
                     if($item['product_category'] == $discountKeyValues['category_name']){
                         if(isset($exceptedCategoryItems[$item['product_id']])){
@@ -99,7 +174,7 @@ class DiscountController extends Controller
                 }
 
             case 3:
-                $orderTotalPrice = 0;
+                $orderTotalPrice = $calculatedTotalPrice;
                 $exceptedCategoryItems = 0;
                 $discountKeys = array(
                     'category_name',
@@ -112,10 +187,6 @@ class DiscountController extends Controller
                 }
                 $discountName = Discount::where('discount_id',$id)->first()->discount_name;
                 foreach ($items as $item) {
-
-                    $itemTotalPrice = $item['quantity'] * $item['unit_price'];
-
-                    $orderTotalPrice += $itemTotalPrice;
 
                     if($item['product_category'] == $discountKeyValues['category_name']){
 
